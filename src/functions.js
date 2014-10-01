@@ -691,3 +691,12 @@ defineFunction(["\\begin", "\\end"], {
         nameGroup: nameGroup,
     };
 });
+
+defineFunction("\\not", {
+    numArgs: 1,
+}, function(func, body) {
+    return {
+        type: "not",
+        body: body,
+    };
+});

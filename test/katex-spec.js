@@ -253,9 +253,11 @@ describe("A bin parser", function() {
 
 describe("A rel parser", function() {
     const expression = "=<>\\leq\\geq\\neq\\nleq\\ngeq\\cong";
+    const notExpression = "\\not=\\not<\\not>\\not\\leq\\not\\geq\\not\\in";
 
     it("should not fail", function() {
         expect(expression).toParse();
+        expect(notExpression).toParse();
     });
 
     it("should build a list of rels", function() {
@@ -265,6 +267,16 @@ describe("A rel parser", function() {
         for (let i = 0; i < parse.length; i++) {
             const group = parse[i];
             expect(group.type).toEqual("rel");
+        }
+    });
+
+    it("should build a list of nots", function() {
+        const parse = getParsed(notExpression);
+        expect(parse).toBeTruthy();
+
+        for (let i = 0; i < parse.length; i++) {
+            const group = parse[i];
+            expect(group.type).toMatch("not");
         }
     });
 });

@@ -108,6 +108,7 @@ NegativeSpaceBetweenRel: A =\!= B
 NestedFractions: |
     \dfrac{\frac{a}{b}}{\frac{c}{d}}\dfrac{\dfrac{a}{b}}
     {\dfrac{c}{d}}\frac{\frac{a}{b}}{\frac{c}{d}}
+Not: \not=\not>\not\geq\not\in\not<\not\leq\not{abc}
 NullDelimiterInteraction: a \bigl. + 2 \quad \left. + a \right)
 OpLimits: |
     {\sin_2^2 \lim_2^2 \int_2^2 \sum_2^2}

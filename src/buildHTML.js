@@ -1491,6 +1491,21 @@ groupTypes.mclass = function(group, options) {
     return makeSpan([group.value.mclass], elements, options);
 };
 
+groupTypes.not = function(group, options, prev) {
+    const inner = buildExpression(group.value.body, options);
+    const not = buildCommon.mathsym(
+        "\\not", group.mode, options.getColor(), ["mrel"]);
+
+    // The hShift value was determined by visual comparison against the
+    // opposite ordering of 'not' and 'inner' without any horiztonal shift.
+    // The reason for flipping the order is that TeX put the solidus at the
+    // start of a group, not the end.
+    const hShift = 0.77;
+    not.style.marginRight = -hShift + "em";
+    not.style.marginLeft = hShift + "em";
+    return makeSpan(["mord mrel"], [not, ...inner]);
+};
+
 /**
  * buildGroup is the function that takes a group and calls the correct groupType
  * function for it. It also handles the interaction of size and style changes
