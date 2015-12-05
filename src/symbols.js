@@ -661,6 +661,22 @@ for (let i = 0x0410; i <= 0x044F; i++) {
     defineSymbol(text, main, textord, ch, ch);
 }
 
+// Greek
+const lowercaseGreekLetters = "αβγδεϵζηθϑικλμνξοπϖρϱςστυφϕχψω";
+for (let i = 0; i < letters.length; i++) {
+    const ch = lowercaseGreekLetters.charAt(i);
+    defineSymbol(math, main, mathord, ch, ch);
+    defineSymbol(text, main, mathord, ch, ch);
+}
+
+// TODO: support all greek uppercase letters
+const uppercaseGreekLetters = "ΓΔΘΞΠΣΦΨΩ";
+for (let i = 0; i < letters.length; i++) {
+    const ch = uppercaseGreekLetters.charAt(i);
+    defineSymbol(math, main, textord, ch, ch);
+    defineSymbol(text, main, textord, ch, ch);
+}
+
 // Unicode versions of existing characters
 defineSymbol(text, main, textord, "\u2013", "–");
 defineSymbol(text, main, textord, "\u2014", "—");
