@@ -1,0 +1,8 @@
+<svg xmlns='http://www.w3.org/2000/svg'>
+<svg width='50.1%' viewBox='0 0 400000 300' preserveAspectRatio='xMinYMin slice'>
+<path fill='black' d='M0 0 h135 v165 L400000 165 v135 L0 300Z'/>
+</svg>
+<svg x='50%' width='50%' viewBox='0 0 400000 300' preserveAspectRatio='xMaxYMin slice'>
+<path fill='black' d='M0 0 v300 h400000 v-300 h-135 v165Z'/>
+</svg>
+</svg>

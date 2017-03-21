@@ -1,0 +1,22 @@
+<svg xmlns="http://www.w3.org/2000/svg">
+<svg viewBox="0 0 400000 334" preserveAspectRatio="xMaxYMin slice">
+<!--Adapted from glyph U+21C0 in KaTeX font AMS-Regular.-->
+<!--Copyright (c) 2009-2010, Design Science, Inc. (<www.mathjax.org>)-->
+<!--Copyright (c) 2014-2017 Khan Academy (<www.khanacademy.org>)-->
+<!--Licensed under the SIL Open Font License, Version 1.1. See \nhttp://scripts.sil.org/OFL-->
+<path fill="black"
+d="M399998 160
+C399988 160 400000 167 400000 167
+400000 167 400000 187 400000 187
+L0 187
+0 147
+399893 147
+C399893 147 399884 138 399884 138
+399856.7 108.7 399835.7 74.7 399821 36
+399814.3 14 399811 2.3 399811 1
+399811 0.3 399818.7 0 399834 0
+399834 0 399857 0 399857 0
+399862.3 20.7 399873.3 43.7 399890 69
+399916 108.3 399948.7 138.7 399988 160 Z"/>
+</svg>
+</svg>

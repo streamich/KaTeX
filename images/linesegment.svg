@@ -1,0 +1,26 @@
+<svg xmlns="http://www.w3.org/2000/svg">
+<svg width="50.1%" viewBox="0 0 400000 336" preserveAspectRatio="xMinYMin slice">
+<path fill="black"
+d="M 1 1
+L 41 1
+41 148
+399999 148
+399999 188
+41 188
+41 335
+1 335 Z"/>
+</svg>
+
+<svg x="50%" width="50%" viewBox="0 0 400000 336" preserveAspectRatio="xMaxYMin slice">
+<path fill="black"
+d="M 399999 1
+L 399999 335
+399959 335
+399959 188
+1 188
+1 148
+399959 148
+399959 1 Z"/>
+</svg>
+
+</svg>

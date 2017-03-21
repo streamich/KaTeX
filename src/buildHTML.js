@@ -129,7 +129,7 @@ const getTypeOfDomTree = function(node) {
  * its inner element should handle the superscripts and subscripts instead of
  * handling them itself.
  */
-const shouldHandleSupSub = function(group, options) {
+const shouldHandleSupSub = function(group, options, isSup) {
     if (!group) {
         return false;
     } else if (group.type === "op") {
@@ -140,6 +140,8 @@ const shouldHandleSupSub = function(group, options) {
             group.value.alwaysHandleSupSub);
     } else if (group.type === "accent") {
         return isCharacterBox(group.value.base);
+    } else if (group.type === "horizBrace") {
+        return (isSup === group.value.isOver);
     } else {
         return null;
     }
@@ -278,12 +280,15 @@ groupTypes.color = function(group, options) {
 };
 
 groupTypes.supsub = function(group, options) {
+
+    const isSup = (group.value.sub ? false : true);
+
     // Superscript and subscripts are handled in the TeXbook on page
     // 445-446, rules 18(a-f).
 
     // Here is where we defer to the inner group if it should handle
     // superscripts and subscripts itself.
-    if (shouldHandleSupSub(group.value.base, options)) {
+    if (shouldHandleSupSub(group.value.base, options, isSup)) {
         return groupTypes[group.value.base.type](group, options);
     }
 
@@ -1400,13 +1405,17 @@ groupTypes.accent = function(group, options) {
     const body = buildGroup(
         base, options.withStyle(style.cramp()));
 
+    // Does the accent need to shift for the skew of a character?
+    const mustShift = group.value.isShifty && isCharacterBox(base);
+
     // Calculate the skew of the accent. This is based on the line "If the
     // nucleus is not a single character, let s = 0; otherwise set s to the
     // kern amount for the nucleus followed by the \skewchar of its font."
     // Note that our skew metrics are just the kern between each character
     // and the skewchar.
     let skew = 0;
-    if (isCharacterBox(base)) {
+    if (mustShift) {
+    // if (isCharacterBox(base)) {
         // If the base is a character box, then we want the skew of the
         // innermost character. To do that, we find the innermost character:
         const baseChar = getBaseElem(base);
@@ -1426,32 +1435,68 @@ groupTypes.accent = function(group, options) {
         body.height,
         style.metrics.xHeight);
 
+    let accentBody;
+
     // Build the accent
-    const accent = buildCommon.makeSymbol(
-        group.value.accent, "Main-Regular", "math", options);
-    // Remove the italic correction of the accent, because it only serves to
-    // shift the accent over to a place we don't want.
-    accent.italic = 0;
+    if (!group.value.isStretchy) {
 
-    // The \vec character that the fonts use is a combining character, and
-    // thus shows up much too far to the left. To account for this, we add a
-    // specific class which shifts the accent over to where we want it.
-    // TODO(emily): Fix this in a better way, like by changing the font
-    const vecClass = group.value.accent === "\\vec" ? "accent-vec" : null;
+        const accent = buildCommon.makeSymbol(
+            // group.value.accent, "Main-Regular", "math", options);
+            group.value.label, "Main-Regular", "math", options);
+        // Remove the italic correction of the accent, because it only serves to
+        // shift the accent over to a place we don't want.
+        accent.italic = 0;
 
-    let accentBody = makeSpan(["accent-body", vecClass], [
-        makeSpan([], [accent])]);
+        // The \vec character that the fonts use is a combining character, and
+        // thus shows up much too far to the left. To account for this, we add a
+        // specific class which shifts the accent over to where we want it.
+        // TODO(emily): Fix this in a better way, like by changing the font
+        // const vecClass = group.value.accent === "\\vec" ? "accent-vec" : null
+        const vecClass = group.value.label === "\\vec" ? "accent-vec" : null;
 
-    accentBody = buildCommon.makeVList([
-        {type: "elem", elem: body},
-        {type: "kern", size: -clearance},
-        {type: "elem", elem: accentBody},
-    ], "firstBaseline", null, options);
+        let accentBody = makeSpan(["accent-body", vecClass], [
+            makeSpan([], [accent])]);
 
-    // Shift the accent over by the skew. Note we shift by twice the skew
-    // because we are centering the accent, so by adding 2*skew to the left,
-    // we shift it to the right by 1*skew.
-    accentBody.children[1].style.marginLeft = 2 * skew + "em";
+        accentBody = buildCommon.makeVList([
+            {type: "elem", elem: body},
+            {type: "kern", size: -clearance},
+            {type: "elem", elem: accentBody},
+        ], "firstBaseline", null, options);
+
+        // Shift the accent over by the skew. Note we shift by twice the
+        // skew
+        // because we are centering the accent, so by adding 2*skew to the
+        // left,
+        // we shift it to the right by 1*skew.
+        accentBody.children[1].style.marginLeft = 2 * skew + "em";
+
+    } else {
+        // Strechy accents use background-image SVGs, which do not take on
+        // the color of the surrounding text, even if fill="currentColor".
+        // Therefore,
+        // TODO: Set color via CSS mask or via inline SVGS.
+
+        const ruleWidth = fontMetrics.metrics.defaultRuleThickness /
+            style.sizeMultiplier;
+
+        accentBody = svgSpan(group, options);
+
+        if (skew > 0) {
+            // Nudge the accent to the right.
+            const adjSize = "calc(100% - " + 2 * skew + "em) 100%";
+            accentBody.style.backgroundSize = adjSize;
+        }
+
+        accentBody = buildCommon.makeVList([
+            {type: "elem", elem: body},
+            {type: "kern", size: 2 * ruleWidth},
+            {type: "elem", elem: accentBody},
+            {type: "kern", size: ruleWidth},
+        ], "firstBaseline", null, options);
+
+    }
+
+
 
     const accentWrap = makeSpan(["mord", "accent"], [accentBody], options);
 
@@ -1472,6 +1517,431 @@ groupTypes.accent = function(group, options) {
         return accentWrap;
     }
 };
+
+
+groupTypes.horizBrace = function(group, options) {
+    const style = options.style;
+    const ruleWidth = fontMetrics.metrics.defaultRuleThickness /
+        style.sizeMultiplier;
+
+    const haveNote = (group.type === "supsub");
+
+    let newOptions;
+    let note;
+    let noteReset;
+
+    if (haveNote) {
+        if (group.value.sup) {
+            newOptions = options.withStyle(style.fracNum());
+            note = buildGroup(group.value.sup, newOptions);
+            noteReset =  makeSpan([style.reset(), style.fracNum().cls()],
+                [note], newOptions);
+        } else {
+            newOptions = options.withStyle(style.fracDen());
+            note = buildGroup(group.value.sub, newOptions);
+            noteReset =  makeSpan([style.reset(), style.fracDen().cls()],
+                [note], newOptions);
+        }
+        group = group.value.base;
+    }
+
+    // Build the base group
+    const body = buildGroup(
+        group.value.base, options.withStyle(style.cramp()));
+
+    // Create the stretchy element
+    const braceBody = svgSpan(group, options);
+
+    // Generate the vlist, with the appropriate kerns
+    const braceShift = (group.value.isOver ? -body.height - 2 * ruleWidth :
+        body.depth + braceBody.height + 2 * ruleWidth);
+
+    let vlist = buildCommon.makeVList([
+        {type: "elem", elem: body, shift: 0},
+        {type: "elem", elem: braceBody, shift: braceShift},
+    ], "individualShift", null, options);
+
+    if (haveNote) {
+        const noteShift = braceShift + (group.value.isOver
+                ? -braceBody.height - 3 * ruleWidth :
+                noteReset.height + 3 * ruleWidth);
+
+        const vSpan = makeSpan(["mord",
+                (group.value.isOver ? "mover" : "munder")],
+            [vlist], options);
+
+        vlist = buildCommon.makeVList([
+            {type: "elem", elem: vSpan, shift: 0},
+            {type: "elem", elem: noteReset, shift: noteShift},
+        ], "individualShift", null, options);
+    }
+
+    return makeSpan(["mord", (group.value.isOver ? "mover" : "munder")],
+        [vlist], options);
+};
+
+groupTypes.accentunder = function(group, options) {
+    // Treat under accents like underlines, per TeXbook pg 443, Rule 10.
+    const style = options.style;
+
+    // Build the inner group.
+    const innerGroup = buildGroup(group.value.body, options);
+
+    const ruleWidth = fontMetrics.metrics.defaultRuleThickness /
+        style.sizeMultiplier;
+
+    const accentBody = svgSpan(group, options);
+    const accentShift = innerGroup.depth + 2 * ruleWidth + accentBody.height;
+
+    // Generate the vlist, with the appropriate kerns
+    const vlist = buildCommon.makeVList([
+        {type: "elem", elem: innerGroup, shift: 0},
+        {type: "elem", elem: accentBody, shift: accentShift},
+    ], "individualShift", innerGroup.height, options);
+
+    return makeSpan(["mord", "accentunder"], [vlist], options);
+};
+
+groupTypes.strikeThru = function(group, options) {
+    let innerGroup = buildGroup(group.value.body, options);
+
+    let style;
+    let line;
+    let lineShift;
+    let vlist;
+    let node;
+    let strut;
+    let label;
+
+    if (group.value.label === "\\sout") {
+        style = options.style;
+        line = makeSpan(
+            [style.reset(), Style.TEXT.cls(), "stretchy", "sout"]);
+        line.height = fontMetrics.metrics.defaultRuleThickness /
+            style.sizeMultiplier;
+        line.maxFontSize = 1.0;
+
+        lineShift = -0.5 * options.style.metrics.xHeight;
+        vlist = buildCommon.makeVList([
+            {type: "elem", elem: innerGroup, shift: 0},
+            {type: "elem", elem: line, shift: lineShift},
+        ], "individualShift", null, options);
+        return makeSpan(["mord"], [vlist], options);
+
+    } else {
+        //  \cancel, \bcancel, \xcancel
+        style = options.style;
+        innerGroup = buildGroup(group.value.body, options);
+        node = makeSpan([], [innerGroup], options);
+
+        if (!document.implementation.hasFeature(
+                "http://www.w3.org/TR/SVG11/feature#BasicStructure", "1.1")) {
+            return node;    // SVG is not supported.
+        }
+
+        // buildCommon.makeVList can't handle images taller than 1 em.
+        // So work out vertical placement from scratch.
+
+        // Create a strut with which to enforce a span height.
+        strut = makeSpan([style.reset(), "strut"], [], options);
+        strut.style.height = (innerGroup.depth +
+            innerGroup.height + 0.4) + "em";
+        strut.style.verticalAlign = -(innerGroup.depth + 0.2) + "em";
+
+        node = makeSpan(["inner-wrap"], [node, strut], options);
+        // inner-wrap has position:absolute
+
+        label = group.value.label.substr(1);
+
+        let strikeThru;
+
+        if (options.color) {
+            strikeThru = makeSpan(["strike"], [], options);
+            strikeThru.style.backgroundImage = inlineSVG(label,
+                options.color);
+        } else {
+            strikeThru = makeSpan(["strike", label], [], options);
+        }
+        strikeThru.style.height = (innerGroup.depth +
+            innerGroup.height + 0.4) + "em";
+        if (innerGroup.height <= options.style.metrics.xHeight) {
+            strikeThru.style.top = 0.2 + "em";
+        }
+
+        node = makeSpan(["outer-wrap"], [node, strikeThru], options);
+        node.height = innerGroup.height + 0.2;
+        node.maxFontSize = 1.0;
+        node.depth = innerGroup.depth + 0.2;
+
+        // Block buildExpression from shifting a space into the span.
+        return makeSpan(["mord"], [new domTree.symbolNode("\u200b"), node],
+            options);
+    }
+};
+
+groupTypes.boxed = function(group, options) {
+    const style = options.style;
+    const innerGroup = buildGroup(group.value.body, options);
+    let node = makeSpan([], [innerGroup], options);
+
+    // Create a strut with which to enforce a span height.
+    const strut = makeSpan([style.reset(), "strut"], [], options);
+    strut.style.height = (innerGroup.depth + innerGroup.height + 0.55) + "em";
+    strut.style.verticalAlign = -(innerGroup.depth + 0.25) + "em";
+
+    node = makeSpan(["mord", "boxed"], [node, strut], options);
+    node.height = (innerGroup.height + 0.45);
+    node.maxFontSize = 1.0;
+    node.depth = (innerGroup.depth + 0.3);
+
+    // Place a symbolNode before the span, to block buildExpression
+    // from splicing a space into the span.
+    const barrier =  new domTree.symbolNode("\u200b");
+    return makeSpan(["mord"], [barrier, node], options);
+};
+
+groupTypes.xArrow = function(group, options) {
+    const style = options.style;
+
+    // Build the inner group.
+    const upperGroup = buildGroup(group.value.body, options);
+
+    let lowerGroup;
+    let lowerShift;
+    let vlist;
+
+    if (group.value.below) {
+        // Build the lower group
+        lowerGroup = buildGroup(group.value.below, options);
+    }
+
+    const ruleWidth = fontMetrics.metrics.defaultRuleThickness /
+        style.sizeMultiplier;
+
+    const arrowBody = svgSpan(group, options);
+
+    const arrowShift = -style.metrics.axisHeight + arrowBody.depth;
+    const upperShift = -style.metrics.axisHeight -
+        arrowBody.height - 3 * ruleWidth;
+
+    // Generate the vlist
+    if (group.value.below) {
+        lowerShift = -style.metrics.axisHeight
+            + lowerGroup.height + arrowBody.height
+            + 3 * ruleWidth;
+        vlist = buildCommon.makeVList([
+            {type: "elem", elem: upperGroup, shift: upperShift},
+            {type: "elem", elem: arrowBody,  shift: arrowShift},
+            {type: "elem", elem: lowerGroup, shift: lowerShift},
+        ], "individualShift", null, options);
+    } else {
+        vlist = buildCommon.makeVList([
+            {type: "elem", elem: upperGroup, shift: upperShift},
+            {type: "elem", elem: arrowBody,  shift: arrowShift},
+        ], "individualShift", null, options);
+    }
+
+    return makeSpan(["mord", "x-arrow"], [vlist], options);
+};
+
+const svgSpan = function(group, options) {
+    // Create a span containing the SVG background-image
+
+    const label = group.value.label.substr(1);
+    let height = 0;
+    let depth = 0;
+    const classArray = ["stretchy"];
+
+    let numChars;
+    let imgIndex;
+    let imgObj;
+    let imgData;
+
+    if (!document.implementation.hasFeature(
+            "http://www.w3.org/TR/SVG11/feature#BasicStructure", "1.1")) {
+
+        // SVG is not supported.
+        height = (label.substr(0, 1) === "x" ? 0.167 : 0.334);
+        depth  = (label.substr(0, 1) === "x" ? 0.167 : 0);
+
+    } else if (utils.contains(["widehat", "widetilde", "undertilde"], label)) {
+
+        // There are four SVG images available for each function.
+        // Choose a taller image when there are more characters.
+        numChars = group.value.value.length;
+        if (numChars > 5) {
+            imgIndex = 4;
+            height = 0.34;
+        } else {
+            imgIndex = [1, 1, 2, 2, 3, 3][numChars];
+            if (label === "widehat") {
+                height = [0, 0.159, 0.22, 0.22, 0.28, 0.28][numChars];
+            } else {
+                height = [0, 0.159, 0.19, 0.19, 0.26, 0.26][numChars];  // tilde
+            }
+        }
+
+        classArray.push(label + imgIndex);
+
+    } else if (utils.contains(["overbracket", "underbracket"], label)) {
+        if (group.value.thickness) {
+            return customBracket(group, options);
+        } else {
+            height = 0.3;
+            classArray.push(label);
+        }
+
+    } else {
+        imgObj = {    // height, depth, className
+            overleftarrow  : [0.334, 0, "leftarrow"],
+            underleftarrow : [0.334, 0, "leftarrow"],
+            xleftarrow : [0.167, 0.167, "x-arrow", "leftarrow"],
+            overrightarrow : [0.334, 0, "rightarrow"],
+            underrightarrow : [0.334, 0, "rightarrow"],
+            xrightarrow : [0.167, 0.167, "x-arrow", "rightarrow"],
+            overbrace : [0.548, 0, "overbrace"],
+            underbrace : [0.548, 0, "underbrace"],
+            overleftrightarrow : [0.334, 0, "leftrightarrow"],
+            underleftrightarrow : [0.334, 0, "leftrightarrow"],
+            xleftrightarrow : [0.167, 0.167, "x-arrow", "leftrightarrow"],
+            Overrightarrow : [0.55, 0, "doublerightarrow"],
+            xLeftarrow : [0.275, 0.275, "x-arrow", "doubleleftarrow"],
+            xRightarrow : [0.275, 0.275, "x-arrow", "doublerightarrow"],
+            xLeftrightarrow : [0.275, 0.275, "x-arrow",
+                "double-left-right-arrow"],
+            overleftharpoon : [0.334, 0, "leftharpoon"],
+            overrightharpoon : [0.334, 0, "rightharpoon"],
+            xleftharpoonup : [0.167, 0.167, "x-arrow", "leftharpoon"],
+            xrightharpoonup : [0.167, 0.167, "x-arrow", "rightharpoon"],
+            xhookleftarrow : [0.191, 0.191, "hookleftarrow"],
+            xhookrightarrow : [0.191, 0.191, "hookrightarrow"],
+            overlinesegment : [0.334, 0, "linesegment"],
+            underlinesegment : [0.334, 0, "linesegment"],
+            xmapsto : [0.167, 0.167, "x-arrow", "mapsto"],
+            xrightharpoondown : [0.167, 0.167, "x-arrow", "rightharpoondown"],
+            xleftharpoondown : [0.167, 0.167, "x-arrow", "leftharpoondown"],
+            xrightleftharpoons : [0.264, 0.264, "x-arrow", "rightleftharpoons"],
+            xleftrightharpoons : [0.264, 0.264, "x-arrow", "leftrightharpoons"],
+            overgroup : [0.262, 0, "overgroup"],
+            undergroup : [0.262, 0, "undergroup"],
+            xtwoheadleftarrow : [0.167, 0.167, "x-arrow", "twoheadleftarrow"],
+            xtwoheadrightarrow : [0.167, 0.167, "x-arrow", "twoheadrightarrow"],
+            xLongequal : [0.167, 0.167, "x-arrow", "longequal"],
+            xtofrom : [0.264, 0.264, "x-arrow", "tofrom"],
+        };
+
+        imgData = imgObj[label];
+        height = imgData[0];
+        depth = imgData[1];
+        classArray.push(imgData[2]);
+
+        if (imgData[3]) {
+            classArray.push(imgData[3]);
+        }
+    }
+
+    const node = makeSpan(classArray, [], options);
+    node.height = height;
+    node.depth = depth;
+    node.maxFontSize = 1.0;
+    return node;
+};
+
+const inlineSVG = function(label, color) {
+    if (label === "cancel") {
+        return "url('data:image/svg+xml,%3Csvg xmlns=%27http://www.w3.org/2000/svg%27"
+            + " viewBox=%270 0 30 30%27 preserveAspectRatio=" +
+            "%27none%27%3E%3Cline"
+            + " vector-effect=%27non-scaling-stroke%27 "
+            + "x1=%270%27 y1=%2730%27"
+            + " x2=%2730%27 y2=%270%27 stroke=%27" + color
+            + "%27 stroke-width=%271.0%27/%3E%3C/svg%3E')";
+    } else if (label === "bcancel") {
+        return "url('data:image/svg+xml,%3Csvg xmlns=%27" +
+            "http://www.w3.org/2000/svg%27"
+            + " viewBox=%270 0 30 30%27 " +
+            "preserveAspectRatio=%27none%27%3E%3Cline"
+            + " vector-effect=%27non-scaling-stroke%27 x1=%270%27 y1=%270%27"
+            + " x2=%2730%27 y2=%2730%27 stroke=%27" + color
+            + "%27 stroke-width=%271.0%27/%3E%3C/svg%3E')";
+    } else {
+        // xcancel
+        return "url('data:image/svg+xml,%3Csvg " +
+            "xmlns=%27http://www.w3.org/2000/svg%27"
+            + " viewBox=%270 0 30 30%27 " +
+            "preserveAspectRatio=%27none%27%3E%3Cline"
+            + " vector-effect=%27non-scaling-stroke%27 x1=%270%27 y1=%270%27"
+            + " x2=%2730%27 y2=%2730%27 stroke=%27" + color
+            + "%27 stroke-width=%271.0%27/%3E%3Cline"
+            + " vector-effect=%27non-scaling-stroke%27 x1=%270%27 y1=%2730%27"
+            + " x2=%2730%27 y2=%270%27 stroke=%27" + color
+            + " %27 stroke-width=%271.0%27/%3E%3C/svg%3E')";
+    }
+};
+
+const customBracket = function(group, options, lineWt) {
+    // Create an over|under bracket with a custom line weight and height.
+    const bracketBody = makeSpan(["stretchy", "custom-bracket"], [], options);
+
+    // Set default values
+    bracketBody.height = 0.3;
+    bracketBody.depth = 0;
+    bracketBody.maxFontSize = 1.0;
+
+    // Next, get height & lineWt for the coord system inside the SVG.
+    let height = 300;
+    lineWt = Math.round(calculateSize(group.value.thickness.value,
+            options.style) * 1000);
+    lineWt = (lineWt ? lineWt : 135);
+
+    let emHeight;
+
+    if (group.value.height) {
+        emHeight = calculateSize(group.value.height.value, options.style);
+        bracketBody.height = emHeight;
+        bracketBody.maxFontSize = (emHeight > 1 ? emHeight + 0.1 : 1);
+        height = Math.round(emHeight * 1000);
+        bracketBody.style.height = emHeight + "em";
+    }
+
+    const step = height - lineWt;
+
+    if (group.value.label === "\\overbracket") {
+        bracketBody.style.backgroundImage = "url('data:image/" +
+            "svg+xml,%3Csvg"
+            + " xmlns=%27http://www.w3.org/2000/svg%27%3E%3Csvg " +
+            "width=%2750.1%25%27"
+            + " viewBox=%270 0 400000 " + height +
+            "%27 preserveAspectRatio=%27xMinYMin"
+            + " slice%27%3E%3Cpath fill=%27black%27 d=%27M0 0 h400000 v"
+            + lineWt + " L" + lineWt + " " + lineWt + " v" + step + " h-"
+            + lineWt + "Z%27/%3E%3C/svg%3E%3Csvg x=%2750%25%27 " +
+            "width=%2750%25%27"
+            + " viewBox=%270 0 400000 " + height +
+            "%27 preserveAspectRatio=%27xMaxYMin"
+            + " slice%27%3E%3Cpath fill=%27black%27 d=%27M0 0 h400000 v"
+            + height
+            + " h-" + lineWt + " v-" + step + " L0 " + lineWt
+            + "Z%27/%3E%3C/svg%3E%3C/svg%3E')";
+    } else {
+        bracketBody.style.backgroundImage = "url('data:image/svg+xml,%3Csvg"
+            + " xmlns=%27http://www.w3.org/2000/" +
+            "svg%27%3E%3Csvg width=%2750.1%25%27"
+            + " viewBox=%270 0 400000 " + height
+            + "%27 preserveAspectRatio=%27xMinYMin"
+            + " slice%27%3E%3Cpath fill=%27black%27 d=%27M0 0 h"
+            + lineWt + " v"
+            + step + " L400000 " + step + " v" + lineWt + " L0 " + height
+            + "Z%27/%3E%3C/svg%3E%3Csvg x=%2750%25%27 width=%2750%25%27"
+            + " viewBox=%270 0 400000 " + height
+            + "%27 preserveAspectRatio=%27xMaxYMin"
+            + " slice%27%3E%3Cpath fill=%27black%27 d=%27M0 0 v" + height
+            + " h400000 v-" + height + " h-" + lineWt + " v" + step
+            + "Z%27/%3E%3C/svg%3E%3C/svg%3E')";
+    }
+    return bracketBody;
+};
+
 
 groupTypes.phantom = function(group, options) {
     const elements = buildExpression(
